@@ -1,0 +1,8 @@
+[submodule "backend"]
+	path = backend
+	url = https://github.com/Naucto/Backend.git
+	branch = main
+[submodule "admin"]
+	path = admin
+	url = https://github.com/Naucto/Admin-Panel.git
+	branch = main

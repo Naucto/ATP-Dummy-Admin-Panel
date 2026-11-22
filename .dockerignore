@@ -1,0 +1,10 @@
+.git
+**/.git
+**/node_modules
+**/dist
+admin
+backend/.env
+backend/.env.*
+backend/config/webrtc.json
+backend/client
+backend/test

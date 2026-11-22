@@ -1,0 +1,106 @@
+# The dummy admin console, deployed by Willy (COMPOSE strategy).
+#
+# Willy clones this repo with submodules tracking their declared branch and builds the backend and
+# the admin console from their *pristine* submodule. Host ports and container_name are left out on
+# purpose: Willy strips them and routes by domain over its edge network. Only `admin` needs a
+# domain (admin:80). docker-compose.local.yml publishes it for a run on a laptop.
+#
+# Nothing here is production data. `seed` wipes the database and the bucket of this stack and
+# fills them again each time the stack is deployed (see seed/ and the README), and every value
+# below is a throwaway that only ever protects fake data. The one secret, JWT_SECRET, is drawn at
+# random when the backend starts unless the deployment sets one.
+#
+# There is no frontend: every link the console draws to the site goes to FRONTEND_URL.
+# ($$VAR escapes compose interpolation so the container shell reads the container's own env.)
+
+volumes:
+  db-data:
+  storage-data:
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: naucto
+      POSTGRES_PASSWORD: naucto-dummy
+      POSTGRES_DB: naucto
+    volumes:
+      - db-data:/var/lib/postgresql
+
+  # S3-compatible object storage for game content, covers and bug screenshots. MinIO no longer
+  # publishes images; pgsty/* rebuilds the upstream releases unchanged.
+  storage:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: naucto
+      MINIO_ROOT_PASSWORD: naucto-dummy-secret
+    volumes:
+      - storage-data:/data
+
+  # Applies pending migrations, seeds, then exits: the backend starts only once it has succeeded.
+  # It waits for the database and the storage by itself, so it needs no health check from them.
+  seed:
+    build:
+      context: .
+      dockerfile: seed/Dockerfile
+    restart: "no"
+    depends_on:
+      - db
+      - storage
+    environment:
+      DATABASE_URL: postgresql://naucto:naucto-dummy@db:5432/naucto
+      S3_ENDPOINT: http://storage:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: naucto
+      S3_SECRET_ACCESS_KEY: naucto-dummy-secret
+      S3_BUCKET_NAME: naucto-dummy
+      EDGE_ENDPOINT: http://localhost:9000/naucto-dummy
+      # reset: wipe and seed again on every start. once: seed only an empty database.
+      SEED_MODE: reset
+      # The password of every seeded account, staff included.
+      SEED_PASSWORD: Naucto!dummy1
+      # An admin account of your own: set USERNAME (an email address) and PASSWORD on this service
+      # in Willy. They are not written here, since this repository is public. For a run on a
+      # laptop, docker-compose.local.yml reads them from .env.
+
+  backend:
+    build:
+      context: ./backend
+      target: prod
+    depends_on:
+      db:
+        condition: service_started
+      storage:
+        condition: service_started
+      seed:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://naucto:naucto-dummy@db:5432/naucto
+      # Where the console's links to games, profiles and staff previews lead.
+      FRONTEND_URL: https://beta.naucto.net
+      S3_ENDPOINT: http://storage:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: naucto
+      S3_SECRET_ACCESS_KEY: naucto-dummy-secret
+      S3_BUCKET_NAME: naucto-dummy
+      # The browser-facing address of the bucket. Nothing reads it while no frontend points here.
+      EDGE_ENDPOINT: http://localhost:9000/naucto-dummy
+    # config/webrtc.json is required and left out of the image, so it is written at start.
+    command:
+      - sh
+      - -c
+      - |
+        export JWT_SECRET="$${JWT_SECRET:-$$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')}"
+        printf '%s' '{"maxClients":50,"relays":[{"url":"stun:stun.l.google.com:19302"}]}' > /app/config/webrtc.json
+        exec node dist/main.js
+
+  admin:
+    build:
+      context: ./admin
+    depends_on:
+      - backend
+    environment:
+      # nginx forwards /api to it, so the browser only ever talks to the console's own origin.
+      NAUCTO_API_URL: http://backend:3000
