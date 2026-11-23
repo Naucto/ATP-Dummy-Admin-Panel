@@ -3,26 +3,26 @@
 # The console is then on http://localhost:3002.
 
 services:
-  admin:
+  dummy-admin:
     ports:
       - "3002:80"
 
   # USERNAME and PASSWORD of an admin account of your own, from .env (see .env.example). The file
   # is handed to the container as it is: compose would otherwise fill in the USERNAME of the
   # shell, which Windows sets to the name of the session.
-  seed:
+  dummy-seed:
     env_file:
       - path: .env
         required: false
     environment:
       EDGE_ENDPOINT: http://localhost:9002/naucto-dummy
 
-  backend:
+  dummy-backend:
     environment:
       EDGE_ENDPOINT: http://localhost:9002/naucto-dummy
 
   # Covers and releases, at the address EDGE_ENDPOINT names. Not 9000, which the Backend's own
   # development stack publishes its storage on.
-  storage:
+  dummy-storage:
     ports:
       - "9002:9000"

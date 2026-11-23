@@ -15,33 +15,33 @@ not of the dummy data.
 
 | Service   | What it is                                                                                         |
 | --------- | -------------------------------------------------------------------------------------------------- |
-| `admin`   | The console, from `./admin`. nginx serves it and forwards `/api` to the backend.                   |
-| `backend` | The API, from `./backend` (`prod` target), unchanged.                                              |
-| `seed`    | Applies the migrations, then fills the database and the bucket, then exits. From `seed/Dockerfile`. |
-| `db`      | Postgres 18.                                                                                       |
-| `storage` | MinIO: game documents, covers and bug screenshots.                                                 |
+| `dummy-admin`   | The console, from `./admin`. nginx serves it and forwards `/api` to the backend.                   |
+| `dummy-backend` | The API, from `./backend` (`prod` target), unchanged.                                              |
+| `dummy-seed`    | Applies the migrations, then fills the database and the bucket, then exits. From `seed/Dockerfile`. |
+| `dummy-db`      | Postgres 18.                                                                                       |
+| `dummy-storage` | MinIO: game documents, covers and bug screenshots.                                                 |
 
 ### Deploying on Willy
 
-One domain is enough: `<the dummy console's domain> → admin:80`. The backend and the storage stay
+One domain is enough: `<the dummy console's domain> → dummy-admin:80`. The backend and the storage stay
 on the private network.
 
 Each service's environment is written out in `docker-compose.yml`. None of it is secret: it names
 services of this stack and passwords that only ever guard fake data. If Willy wants the values
 entered per service, they are:
 
-- **db**: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`.
-- **storage**: `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`.
-- **seed**: `DATABASE_URL`, the five `S3_*`, `EDGE_ENDPOINT`, `SEED_MODE`, `SEED_PASSWORD`, and
+- **dummy-db**: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`.
+- **dummy-storage**: `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`.
+- **dummy-seed**: `DATABASE_URL`, the five `S3_*`, `EDGE_ENDPOINT`, `SEED_MODE`, `SEED_PASSWORD`, and
   optionally `USERNAME` and `PASSWORD` (see below).
-- **backend**: `NODE_ENV`, `DATABASE_URL`, `FRONTEND_URL`, the five `S3_*`, `EDGE_ENDPOINT`.
-- **admin**: `NAUCTO_API_URL`.
+- **dummy-backend**: `NODE_ENV`, `DATABASE_URL`, `FRONTEND_URL`, the five `S3_*`, `EDGE_ENDPOINT`.
+- **dummy-admin**: `NAUCTO_API_URL`.
 
 Worth setting differently on a deployment people can reach:
 
-- `SEED_PASSWORD` on **seed**. It is the password of every seeded account, the staff ones
+- `SEED_PASSWORD` on **dummy-seed**. It is the password of every seeded account, the staff ones
   included, and the default is printed below.
-- `JWT_SECRET` on **backend**, to keep sessions across a restart. Left out, the backend draws a
+- `JWT_SECRET` on **dummy-backend**, to keep sessions across a restart. Left out, the backend draws a
   random one each time it starts, and a restart signs everyone out.
 
 ### Signing in
@@ -57,11 +57,11 @@ Every account has the password in `SEED_PASSWORD` (`Naucto!dummy1` unless change
 
 #### An admin account of your own
 
-Set `USERNAME` (an email address) and `PASSWORD` on the **seed** service and the seed also creates
+Set `USERNAME` (an email address) and `PASSWORD` on the **dummy-seed** service and the seed also creates
 that account as an admin, with that password. It is written again on every seed, so it survives a
 reset.
 
-- On Willy, enter both on the `seed` service. They are in no file of this repository, which is
+- On Willy, enter both on the `dummy-seed` service. They are in no file of this repository, which is
   public.
 - On a laptop, copy `.env.example` to `.env` and fill it in. `docker-compose.local.yml` hands that
   file to the seed. `.env` is ignored by git.

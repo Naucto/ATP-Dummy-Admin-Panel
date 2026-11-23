@@ -3,7 +3,7 @@
 # Willy clones this repo with submodules tracking their declared branch and builds the backend and
 # the admin console from their *pristine* submodule. Host ports and container_name are left out on
 # purpose: Willy strips them and routes by domain over its edge network. Only `admin` needs a
-# domain (admin:80). docker-compose.local.yml publishes it for a run on a laptop.
+# domain (dummy-admin:80). docker-compose.local.yml publishes it for a run on a laptop.
 #
 # Nothing here is production data. `seed` wipes the database and the bucket of this stack and
 # fills them again each time the stack is deployed (see seed/ and the README), and every value
@@ -13,12 +13,15 @@
 # There is no frontend: every link the console draws to the site goes to FRONTEND_URL.
 # ($$VAR escapes compose interpolation so the container shell reads the container's own env.)
 
+# Every service is named `dummy-…`. On a server that also runs the production stack, both share
+# Willy's network, and a name such as `backend` or `db` would resolve to either stack's container.
+
 volumes:
   db-data:
   storage-data:
 
 services:
-  db:
+  dummy-db:
     image: postgres:18
     environment:
       POSTGRES_USER: naucto
@@ -29,7 +32,7 @@ services:
 
   # S3-compatible object storage for game content, covers and bug screenshots. MinIO no longer
   # publishes images; pgsty/* rebuilds the upstream releases unchanged.
-  storage:
+  dummy-storage:
     image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     command: server /data
     environment:
@@ -40,17 +43,17 @@ services:
 
   # Applies pending migrations, seeds, then exits: the backend starts only once it has succeeded.
   # It waits for the database and the storage by itself, so it needs no health check from them.
-  seed:
+  dummy-seed:
     build:
       context: .
       dockerfile: seed/Dockerfile
     restart: "no"
     depends_on:
-      - db
-      - storage
+      - dummy-db
+      - dummy-storage
     environment:
-      DATABASE_URL: postgresql://naucto:naucto-dummy@db:5432/naucto
-      S3_ENDPOINT: http://storage:9000
+      DATABASE_URL: postgresql://naucto:naucto-dummy@dummy-db:5432/naucto
+      S3_ENDPOINT: http://dummy-storage:9000
       S3_REGION: us-east-1
       S3_ACCESS_KEY_ID: naucto
       S3_SECRET_ACCESS_KEY: naucto-dummy-secret
@@ -64,23 +67,26 @@ services:
       # in Willy. They are not written here, since this repository is public. For a run on a
       # laptop, docker-compose.local.yml reads them from .env.
 
-  backend:
+  dummy-backend:
     build:
       context: ./backend
       target: prod
     depends_on:
-      db:
+      dummy-db:
         condition: service_started
-      storage:
+      dummy-storage:
         condition: service_started
-      seed:
+      dummy-seed:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://naucto:naucto-dummy@db:5432/naucto
+      # Not 3000, the port of the production backend: a request that reaches the wrong one of the
+      # two then fails instead of being answered with the other's data.
+      PORT: 3100
+      DATABASE_URL: postgresql://naucto:naucto-dummy@dummy-db:5432/naucto
       # Where the console's links to games, profiles and staff previews lead.
       FRONTEND_URL: https://beta.naucto.net
-      S3_ENDPOINT: http://storage:9000
+      S3_ENDPOINT: http://dummy-storage:9000
       S3_REGION: us-east-1
       S3_ACCESS_KEY_ID: naucto
       S3_SECRET_ACCESS_KEY: naucto-dummy-secret
@@ -96,11 +102,11 @@ services:
         printf '%s' '{"maxClients":50,"relays":[{"url":"stun:stun.l.google.com:19302"}]}' > /app/config/webrtc.json
         exec node dist/main.js
 
-  admin:
+  dummy-admin:
     build:
       context: ./admin
     depends_on:
-      - backend
+      - dummy-backend
     environment:
       # nginx forwards /api to it, so the browser only ever talks to the console's own origin.
-      NAUCTO_API_URL: http://backend:3000
+      NAUCTO_API_URL: http://dummy-backend:3100
